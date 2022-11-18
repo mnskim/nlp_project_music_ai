@@ -245,6 +245,288 @@ class MusicBERTM2PCriterionForXAI(SentencePredictionCriterion):
     def logging_outputs_can_be_summed() -> bool:
         return False
 
+@register_criterion("M2PF_xai_adv")
+class MusicBERTSentencePredictionMultilabelCriterionForXAIADV(SentencePredictionCriterion):
+    def __init__(self, task, classification_head_name, regression_target):
+        super().__init__(task, classification_head_name, regression_target)
+        self.loss_fn = nn.MSELoss()
+        self.loss_last_fn = nn.MSELoss()
+        self.gold_loss_fn = nn.MSELoss()
+        self.gold_loss_last_fn = nn.MSELoss()
+        self.alpha = 1
+        self.num_steps = 1
+        self.step_size = 1e-3
+        self.epsilon = 1e-6
+        self.noise_var = 1e-5
+
+
+    def forward(self, model, sample, reduce=True):
+        assert (
+            hasattr(model, "classification_heads")
+            and self.classification_head_name in model.classification_heads
+        ), "model must provide sentence classification head for --criterion=sentence_prediction"
+        #print(sample["net_input"])
+        embeds = model.encoder.sentence_encoder.embed_tokens(sample["net_input"]["src_tokens"])
+
+        logits, _ = model(
+            **sample["net_input"],
+            token_embeddings = embeds,
+            features_only=True,
+            classification_head_name=self.classification_head_name,
+        )
+
+        targets = model.get_targets(sample, [logits])
+        targets = targets[:,:-1]
+        logits = torch.sigmoid(logits)
+
+        #FIXME: virtual loss 의 last loss fn은 MSE or KL div
+        virtual_loss = self.get_perturbed_loss(
+            embeds, logits, model, sample, 
+            loss_fn=self.loss_fn, loss_last_fn=self.loss_last_fn
+        )
+
+        labels_loss = self.get_perturbed_loss(
+            embeds, targets.float(), model, sample,
+            loss_fn=self.gold_loss_fn, loss_last_fn=self.gold_loss_last_fn,
+        )
+
+        loss = labels_loss + self.alpha * virtual_loss
+
+        sample_size = logits.size()[0]
+        logging_output = {
+            "loss": loss.data,
+            "ntokens": sample_size * logits.size()[1],
+            "nsentences": sample_size,
+            "sample_size": sample_size,
+        }
+        preds = F.relu(torch.sign(logits))
+        #logging_output["ncorrect"] = sample_size - \
+        #    torch.sign((preds != targets).sum(dim=1)).sum().data
+        logging_output["y_true"] = targets.detach().cpu().numpy()
+        logging_output["y_pred"] = logits.detach().cpu().numpy()
+        return loss, sample_size, logging_output
+
+    @staticmethod
+    def reduce_metrics(logging_outputs) -> None:
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
+        nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        metrics.log_scalar(
+            "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
+        )
+        if sample_size != ntokens:
+            metrics.log_scalar(
+                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
+            )
+        if len(logging_outputs) > 0 and "ncorrect" in logging_outputs[0]:
+            ncorrect = sum(log.get("ncorrect", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "accuracy", 100.0 * ncorrect / nsentences, nsentences, round=1
+            )
+        if len(logging_outputs) > 0 and "y_pred" in logging_outputs[0]:
+            y_pred = np.vstack(tuple(log.get("y_pred")
+                                     for log in logging_outputs if "y_pred" in log))
+            y_true = np.vstack(tuple(log.get("y_true")
+                                     for log in logging_outputs if "y_true" in log))
+            metrics.log_scalar("MSE", mean_squared_error(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+            metrics.log_scalar("R2", r2_score(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        return False
+
+    @torch.enable_grad()
+    def get_perturbed_loss(
+        self, embeds: Tensor, state: Tensor, model, sample, loss_fn: Callable, loss_last_fn: Callable,
+    ):
+        noise = torch.randn_like(embeds, requires_grad=True) * self.noise_var
+        for i in count():
+            # Compute perturbed embed and states
+            embed_perturbed = embeds + noise
+
+            state_perturbed, _ = model(
+                **sample["net_input"],
+                token_embeddings = embed_perturbed,
+                features_only=True,
+                classification_head_name=self.classification_head_name,
+            )
+
+            # Return final loss if last step (undetached state)
+            if i == self.num_steps:
+                return loss_last_fn(state_perturbed, state)
+            # Compute perturbation loss (detached state)
+            loss = loss_fn(state_perturbed, state.detach())
+            # Compute noise gradient ∂loss/∂noise
+            (noise_gradient,) = torch.autograd.grad(loss, noise)
+            # Move noise towards gradient to change state as much as possible
+            step = noise + self.step_size * noise_gradient
+            # Normalize new noise step into norm induced ball
+            step_norm = self.inf_norm(step)
+            noise = step / (step_norm + self.epsilon)
+            # Reset noise gradients for next step
+            noise = noise.detach().requires_grad_()
+    def inf_norm(self, x):
+        return torch.norm(x, p=float("inf"), dim=-1, keepdim=True)
+
+@register_criterion("M2PF_xai")
+class MusicBERTSentencePredictionMultilabelCriterionForXAI(SentencePredictionCriterion):
+    def forward(self, model, sample, reduce=True):
+        assert (
+            hasattr(model, "classification_heads")
+            and self.classification_head_name in model.classification_heads
+        ), "model must provide sentence classification head for --criterion=sentence_prediction"
+        #print(sample["net_input"])
+        #embeds = model.encoder.sentence_encoder(sample["net_input"]["src_tokens"])
+        logits, _ = model(
+            **sample["net_input"],
+            features_only=True,
+            classification_head_name=self.classification_head_name,
+        )
+        targets = model.get_targets(sample, [logits])
+        targets = targets[:,:-1]
+        logits = torch.sigmoid(logits)
+        # loss = F.binary_cross_entropy_with_logits(
+        #     logits, targets.float(), reduction='sum')
+        loss_fct = nn.MSELoss()
+        loss = loss_fct(logits, targets.float())
+        sample_size = logits.size()[0]
+        logging_output = {
+            "loss": loss.data,
+            "ntokens": sample_size * logits.size()[1],
+            "nsentences": sample_size,
+            "sample_size": sample_size,
+        }
+        #logging_output["ncorrect"] = sample_size - \
+        #    torch.sign((preds != targets).sum(dim=1)).sum().data
+        logging_output["y_true"] = targets.detach().cpu().numpy()
+        logging_output["y_pred"] = logits.detach().cpu().numpy()
+        return loss, sample_size, logging_output
+
+    @staticmethod
+    def reduce_metrics(logging_outputs) -> None:
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
+        nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        metrics.log_scalar(
+            "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
+        )
+        if sample_size != ntokens:
+            metrics.log_scalar(
+                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
+            )
+        if len(logging_outputs) > 0 and "ncorrect" in logging_outputs[0]:
+            ncorrect = sum(log.get("ncorrect", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "accuracy", 100.0 * ncorrect / nsentences, nsentences, round=1
+            )
+        if len(logging_outputs) > 0 and "y_pred" in logging_outputs[0]:
+            y_pred = np.vstack(tuple(log.get("y_pred")
+                                     for log in logging_outputs if "y_pred" in log))
+            y_true = np.vstack(tuple(log.get("y_true")
+                                     for log in logging_outputs if "y_true" in log))
+            metrics.log_scalar("MSE", mean_squared_error(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+            metrics.log_scalar("R2", r2_score(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+            #metrics.log_scalar("R2", r2_score(y_true, y_pred), round=4)
+
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        return False
+
+@register_criterion("M2PFnP_xai")
+class MusicBERTM2PFnPCriterionForXAI(SentencePredictionCriterion):
+    def __init__(self, task, classification_head_name, regression_target, regression_head_name):
+        print("****", task, classification_head_name, regression_target, regression_head_name)
+        super().__init__(task, classification_head_name, regression_target)
+        self.classification_head_name = classification_head_name
+        self.regression_head_name = regression_head_name
+
+    @staticmethod
+    def add_args(parser):
+        # fmt: off
+        parser.add_argument('--classification-head-name',
+                            default='sentence_classification_head',
+                            help='name of the classification head to use')
+        parser.add_argument('--regression-head-name',
+                            default='sentence_regression_head',
+                            help='name of the regression head to use')
+
+    def forward(self, model, sample, reduce=True):
+        assert (
+            hasattr(model, "classification_heads")
+            and self.classification_head_name in model.classification_heads
+        ), "model must provide sentence classification head for --criterion=M2PFnP"
+        assert (
+            hasattr(model, "regression_heads")
+            and self.regression_head_name in model.regression_heads
+        ), "model must provide sentence classification head for --criterion=M2PFnP"
+        (logits_cls, logits_reg) , _ = model(
+            **sample["net_input"],
+            features_only=True,
+            classification_head_name=self.classification_head_name,
+            regression_head_name=self.regression_head_name,
+        )
+        #print(model.__attr__)
+        #print(model.__dict__)
+        targets = model.get_targets(sample, [logits_reg])
+        targets_reg = targets[:,:-1]
+        targets_cls = targets[:,-1]
+        logits_reg = torch.sigmoid(logits_reg)
+        # loss = F.binary_cross_entropy_with_logits(
+        #     logits, targets.float(), reduction='sum')
+        loss_reg_fct = nn.MSELoss(reduction='sum')
+        loss_cls_fct = nn.CrossEntropyLoss(reduction='sum')
+        loss_reg = loss_reg_fct(logits_reg, targets_reg.float())
+        loss_cls = loss_cls_fct(logits_cls, targets_cls.long()) 
+        #print(f"loss_reg: {loss_reg}, loss_cls: {loss_cls}")
+        loss = loss_reg + loss_cls
+        sample_size = logits_reg.size()[0]
+        logging_output = {
+            "loss": loss.data,
+            "ntokens": sample_size * logits_reg.size()[1],
+            "nsentences": sample_size,
+            "sample_size": sample_size,
+        }
+        preds_cls = logits_cls.argmax(dim=1)
+        logging_output["ncorrect"] = (preds_cls == targets_cls).sum()
+        logging_output["y_true_cls"] = targets_cls.detach().cpu().numpy()
+        logging_output["y_pred_cls"] = preds_cls.detach().cpu().numpy()
+        logging_output["y_true_reg"] = targets_reg.detach().cpu().numpy()
+        logging_output["y_pred_reg"] = logits_reg.detach().cpu().numpy()
+        return loss, sample_size, logging_output
+
+    @staticmethod
+    def reduce_metrics(logging_outputs) -> None:
+        loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
+        ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
+        nsentences = sum(log.get("nsentences", 0) for log in logging_outputs)
+        sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        metrics.log_scalar(
+            "loss", loss_sum / sample_size / math.log(2), sample_size, round=3
+        )
+        if sample_size != ntokens:
+            metrics.log_scalar(
+                "nll_loss", loss_sum / ntokens / math.log(2), ntokens, round=3
+            )
+        if len(logging_outputs) > 0 and "ncorrect" in logging_outputs[0]:
+            ncorrect = sum(log.get("ncorrect", 0) for log in logging_outputs)
+            metrics.log_scalar(
+                "accuracy", 100.0 * ncorrect / nsentences, nsentences, round=1
+            )
+        if len(logging_outputs) > 0 and "y_pred_reg" in logging_outputs[0]:
+            y_pred = np.vstack(tuple(log.get("y_pred_reg")
+                                     for log in logging_outputs if "y_pred_reg" in log))
+            y_true = np.vstack(tuple(log.get("y_true_reg")
+                                     for log in logging_outputs if "y_true_reg" in log))
+            metrics.log_scalar("MSE", mean_squared_error(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+            metrics.log_scalar("R2", r2_score(y_true.reshape(-1), y_pred.reshape(-1)), round=4)
+
+    @staticmethod
+    def logging_outputs_can_be_summed() -> bool:
+        return False
+
+
 class OctupleMaskTokensDataset(MaskTokensDataset):
     @lru_cache(maxsize=8)
     def __getitem__(self, index: int):
@@ -612,7 +894,7 @@ class MusicBERTModel(RobertaModel):
 
     def upgrade_state_dict_named(self, state_dict, name):
         prefix = name + "." if name != "" else ""
-        print(state_dict.keys())
+        #print(state_dict.keys())
         # rename decoder -> encoder before upgrading children modules
         for k in list(state_dict.keys()):
             if k.startswith(prefix + "decoder"):

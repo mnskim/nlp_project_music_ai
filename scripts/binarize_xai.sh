@@ -14,6 +14,7 @@ i=0
 	    --destdir ${PREFIX}_data_bin_apex_reg_cls/$i/input0 \
 	    --srcdict ${PREFIX}_data_raw_apex_reg_cls/$i/dict.txt \
 	    --workers 24
+    mkdir -p ${PREFIX}_data_bin_apex_reg_cls/$i/label 
 	fairseq-preprocess \
 	    --only-source \
 	    --trainpref ${PREFIX}_data_raw_apex_reg_cls/$i/train.label \

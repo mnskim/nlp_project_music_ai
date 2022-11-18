@@ -11,7 +11,7 @@ export CUDA_VISIBLE_DEVICES=2
 
 TOTAL_NUM_UPDATES=7000
 WARMUP_UPDATES=300
-PEAK_LRS=(1e-3 1e-4 1e-5)
+PEAK_LRS=(1e-4 1e-5 1e-6)
 TOKENS_PER_SAMPLE=8192
 MAX_POSITIONS=8192
 BATCH_SIZE=32
@@ -28,7 +28,7 @@ do
 
     for lr in "${PEAK_LRS[@]}"
         do
-        CHECKPOINT_SUFFIX=xai_apex_M2P_${lr}_${size}_released.pt
+        CHECKPOINT_SUFFIX=xai_apex_M2P_${lr}_${size}_tmp.pt
         fairseq-train xai_data_bin_apex_reg_cls/0 --user-dir musicbert \
             --restore-file $MUSICBERT_PATH \
             --max-update $TOTAL_NUM_UPDATES \
@@ -49,7 +49,7 @@ do
             --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-6 --clip-norm 0.0 \
             --lr-scheduler polynomial_decay --lr $lr --total-num-update $TOTAL_NUM_UPDATES --warmup-updates $WARMUP_UPDATES \
             --log-format json --log-interval 100 \
-            --tensorboard-logdir checkpoints/board_apex_M2P_${lr}_${size}_released \
+            --tensorboard-logdir /data1/jongho/muzic/musicbert/checkpoints/board_apex_M2P_${lr}_${size}_tmp \
             --best-checkpoint-metric accuracy \
             --shorten-method "truncate" \
             --checkpoint-suffix _${CHECKPOINT_SUFFIX} \

@@ -10,14 +10,18 @@ import torch.nn.functional as F
 import sys
 import os
 from sklearn.metrics import r2_score
-from map_midi_to_label import LABEL_LIST
+from processed.map_midi_to_label import LABEL_LIST
 import argparse
 
 max_length = 8192 if 'disable_cp' not in os.environ else 1024
 batch_size = 4
 n_folds = 1
-
-label_list = LABEL_LIST[3:]
+#LABEL_TO_REMOVE = ["Regular beat change", "Subtle change", "Sophisticated(mellow)", "balanced", "Harmonious", "Dominant(forceful)", "Imaginative"]
+LABEL_TO_REMOVE = ["Mechanical Tempo", "Intensional", "Regular beat change"]
+#label_list = LABEL_LIST[3:]
+#label_list = [l for l in label_list if l not in LABEL_TO_REMOVE]
+label_list = [l for l in LABEL_LIST if l not in LABEL_TO_REMOVE]
+print("len labels: ", len(label_list))
 scores = dict()
 # for score in ["R2"]:
 #     for label_name in label_list:
@@ -35,7 +39,11 @@ def get_args():
     parser.add_argument('--head_name', type = str, required=True)
     parser.add_argument('--checkpoint_file', type=str, default='')
     parser.add_argument('--data_dir', type=str, default='xai_data_bin_apex_reg_cls/0')
+    args = parser.parse_args()
+    return args
 
+args = get_args()
+print("=========================================================================")
 
 for i in range(n_folds):
 
@@ -44,18 +52,18 @@ for i in range(n_folds):
 
     roberta = RobertaModel.from_pretrained(
         '.',
-        checkpoint_file=sys.argv[1],
-        data_name_or_path=sys.argv[2],
+        checkpoint_file=args.checkpoint_file,
+        data_name_or_path=args.data_dir,
         user_dir='musicbert'
     )
-    num_classes = 25
+    num_classes = 25 - 7
     roberta.task.load_dataset('valid')
     dataset = roberta.task.datasets['valid']
     label_dict = roberta.task.label_dictionary
     pad_index = label_dict.pad()
     roberta.cuda()
     roberta.eval()
-    print(roberta)
+    print(args)
     cnt = 0
 
     y_true = []
@@ -85,12 +93,19 @@ for i in range(n_folds):
         source = np.vstack(tuple(padded(dataset[j]['source'].numpy()) for j in range(
             i, i + batch_size) if j < len(dataset)))
         source = torch.from_numpy(source)
-        # if M2PF
-        #output = torch.sigmoid(roberta.predict('xai_head', source, True))
-        # if M2PFnP:
-        output = torch.sigmoid(roberta.predict('xai_M2PFnP_res', source, True))
+        if args.task == 'xai_M2PFnP':
+            features = roberta.extract_features(source.to(device=roberta.device))
+            logits = roberta.model.regression_heads[args.head_name](features)
+            output = torch.sigmoid(logits)
+        else:
+            features = roberta.extract_features(source.to(device=roberta.device))
+            logits = roberta.model.classification_heads[args.head_name](features)
+            output = torch.sigmoid(logits)
+            #output = torch.sigmoid(roberta.predict(args.head_name, source, True))
+        
         y_true.append(target.detach().cpu().numpy())
         y_pred.append(output.detach().cpu().numpy())
+        
         print('evaluating: {:.2f}%'.format(
             i / len(dataset) * 100), end='\r', flush=True)
 
@@ -102,12 +117,14 @@ for i in range(n_folds):
     #     print(i, label_fn(i, label_dict))
     print(y_true.shape)
     print(y_pred.shape)
+    print(label_list)
     print()
 
     assert len(label_list) == y_pred.shape[1]
 
     for score in ["R2"]:
-        result = r2_score(y_true, y_pred)
+        #result = r2_score(y_true, y_pred)
+        result = r2_score(y_true.reshape(-1), y_pred.reshape(-1))
         scores [score + "_total"] = result
         for i, label_name in enumerate(label_list):
             scores[score + "_" + label_name] = r2_score(y_true[:,i], y_pred[:,i])
@@ -118,4 +135,4 @@ for i in range(n_folds):
 print(scores)
 
 for k in scores.keys():
-    print(f"{k} , {scores[k]}")
+    print(f"{'_'.join(k.split(' '))}, {scores[k]}")
