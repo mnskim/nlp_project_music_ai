@@ -3,6 +3,14 @@ This is the starter kit for the Music XAI Project.
 
 A big thank you to [Jongho Kim](https://github.com/ihatedebug/) for providing the codebase!
 
+# Installation
+
+## Conda environment
+
+`conda create -n music_xai python=3.7.13`
+`conda activate music_xai`
+`pip install -r requirements`
+
 # MusicBERT
 [MusicBERT: Symbolic Music Understanding with Large-Scale Pre-Training](https://arxiv.org/pdf/2106.05630.pdf), by Mingliang Zeng, Xu Tan, Rui Wang, Zeqian Ju, Tao Qin, Tie-Yan Liu, ACL 2021, is a large-scale pre-trained model for symbolic music understanding. It has several mechanisms including OctupleMIDI encoding and bar-level masking strategy that are specifically designed for symbolic music data, and achieves state-of-the-art accuracy on several music understanding tasks, including melody completion, accompaniment suggestion, genre classification, and style classification.
 
