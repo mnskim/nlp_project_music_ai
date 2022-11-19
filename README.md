@@ -49,7 +49,7 @@ Projects using MusicBERT:
 
 - In `processed` directory.
     ```
-    cd preocessed
+    cd processed
     ```
 - please use the provided segmented midi file   `total.csv` `segment_midi.zip` since there is file name error in original Google Drive file. 
 - other data `ex) metadata of annotators, original files, ... ` are in the drive
