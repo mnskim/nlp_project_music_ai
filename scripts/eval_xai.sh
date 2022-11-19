@@ -37,3 +37,5 @@ export CUDA_VISIBLE_DEVICES=2
 # python eval_xai.py --task xai_M2PF --head_name xai_head --checkpoint_file checkpoints_8_16_match/checkpoint_best_xai_apex_M2PF_0.00001_base_8.pt.pt --data_dir processed/subset_8_16/xai_data_bin_apex_8bars/0
 # python eval_xai.py --task xai_M2PF --head_name xai_head --checkpoint_file checkpoints_8_16_match/checkpoint_best_xai_apex_M2PF_0.000001_base_8.pt.pt --data_dir processed/subset_8_16/xai_data_bin_apex_8bars/0
 
+python eval_xai.py --task xai_M2PF --head_name xai_head --checkpoint_file checkpoints_8bars/checkpoint_best_xai_apex_M2PF_0.0001_base_8.pt.pt --data_dir processed/xai_data_bin_apex_reg_cls_8bars/0
+python eval_xai.py --task xai_M2PF --head_name xai_head --checkpoint_file checkpoints_8bars/checkpoint_best_xai_apex_M2PF_0.00001_base_8.pt.pt --data_dir processed/xai_data_bin_apex_reg_cls_8bars/0

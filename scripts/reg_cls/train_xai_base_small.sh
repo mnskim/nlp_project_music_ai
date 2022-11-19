@@ -3,11 +3,6 @@
 # bash train_genre.sh topmagd 13 0 checkpoints/checkpoint_last_musicbert_base.pt
 # bash train_xai.sh xai 28 0 checkpoints/checkpoint_last_musicbert_base.pt
 export CUDA_VISIBLE_DEVICES=2
-#export PATH=$PATH:/home/mnskim/workspace/ta/nlp_2022/muzic/musicbert
-#export PYTHONPATH=$PYTHONPATH:/home/mnskim/workspace/ta/nlp_2022/muzic/musicbert
-export PYTHONPATH=`pwd`
-
-
 
 # cd checkpoints
 # wget https://msramllasc.blob.core.windows.net/modelrelease/checkpoint_last_musicbert_small.pt
@@ -36,7 +31,7 @@ do
     for lr in "${PEAK_LRS[@]}"
         do
         CHECKPOINT_SUFFIX=xai_apex_M2PFnP_${size}_${lr}.pt
-        fairseq-train ./processed/xai_data_bin_apex_reg_cls/0 --user-dir musicbert \
+        fairseq-train xai_data_bin_apex_reg_cls/0 --user-dir musicbert \
             --restore-file $MUSICBERT_PATH \
             --max-update $TOTAL_NUM_UPDATES \
             --batch-size $MAX_SENTENCES --update-freq $UPDATE_FREQ \
@@ -58,6 +53,7 @@ do
             --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-6 --clip-norm 0.0 \
             --lr-scheduler polynomial_decay --lr $lr --total-num-update $TOTAL_NUM_UPDATES --warmup-updates $WARMUP_UPDATES \
             --log-format json --log-interval 70 \
+            --tensorboard-logdir /data1/jongho/muzic/musicbert/checkpoints/board_apex_M2PFnP_${lr}_${size} \
             --best-checkpoint-metric R2 \
             --shorten-method "truncate" \
             --checkpoint-suffix _${CHECKPOINT_SUFFIX} \

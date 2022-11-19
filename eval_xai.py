@@ -123,8 +123,8 @@ for i in range(n_folds):
     assert len(label_list) == y_pred.shape[1]
 
     for score in ["R2"]:
-        #result = r2_score(y_true, y_pred)
-        result = r2_score(y_true.reshape(-1), y_pred.reshape(-1))
+        result = r2_score(y_true, y_pred)
+        #result = r2_score(y_true.reshape(-1), y_pred.reshape(-1))
         scores [score + "_total"] = result
         for i, label_name in enumerate(label_list):
             scores[score + "_" + label_name] = r2_score(y_true[:,i], y_pred[:,i])
