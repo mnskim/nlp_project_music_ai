@@ -40,7 +40,7 @@ Projects using MusicBERT:
 - https://drive.google.com/drive/folders/1Rzncw8syf__TE5Fb1415P9V5zOcztQ5o
 ### installation
 - `pip install -r requirements.txt`
-- you should use fairseq version that is in `requirementx.txt` file
+- you should use fairseq version that is in `requirements.txt` file
 - install your own pytorch version, regarding the GPU.
 
 ## 1. Preparing datasets
