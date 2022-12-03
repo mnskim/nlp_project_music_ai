@@ -2,7 +2,7 @@
 # python ${PATH-TO-FAIRSEQ_ROOT}/fairseq_cli/train.py ${args}.
 # bash train_genre.sh topmagd 13 0 checkpoints/checkpoint_last_musicbert_base.pt
 # bash train_xai.sh xai 28 0 checkpoints/checkpoint_last_musicbert_base.pt
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=7
 
 # cd checkpoints
 # wget https://msramllasc.blob.core.windows.net/modelrelease/checkpoint_last_musicbert_small.pt
@@ -49,7 +49,7 @@ do
             --optimizer adam --adam-betas "(0.9, 0.98)" --adam-eps 1e-6 --clip-norm 0.0 \
             --lr-scheduler polynomial_decay --lr $lr --total-num-update $TOTAL_NUM_UPDATES --warmup-updates $WARMUP_UPDATES \
             --log-format json --log-interval 70 \
-            --tensorboard-logdir checkpoints/M2PF/board_apex_${lr}_${size} \
+            --tensorboard-logdir ./experiments/checkpoints/M2PF/board_apex_${lr}_${size} \
             --best-checkpoint-metric R2 \
             --shorten-method "truncate" \
             --checkpoint-suffix _${CHECKPOINT_SUFFIX} \
