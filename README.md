@@ -51,7 +51,7 @@ Projects using MusicBERT:
     ```
     cd processed
     ```
-- please use the provided segmented midi file   `total.csv` `segment_midi.zip` since there is file name error in original Google Drive file. 
+- please use the provided segmented midi file   `total.csv` `segment_midi.zip` (in `processed` dir) since there is file name error in original Google Drive file. 
 - other data `ex) metadata of annotators, original files, ... ` are in the drive
 
 #### map_midi_to_label.py
