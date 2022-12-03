@@ -43,6 +43,13 @@ Projects using MusicBERT:
 - you should use fairseq version that is in `requirements.txt` file
 - install your own pytorch version, regarding the GPU.
 
+For checking fairseq version, do:
+```
+import fairseq
+fairseq.__version__
+>>> '1.0.0a0+3369427'
+```
+
 ## 1. Preparing datasets
 
 ### 1.1 Pre-processing datasets
